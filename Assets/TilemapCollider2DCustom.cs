@@ -13,8 +13,18 @@ public class TilemapCollider2DCustom : MonoBehaviour{
 
     void Start() {
         tilemap = GetComponent<Tilemap>();
-        EdgeCollider2D collider = (EdgeCollider2D)gameObject.AddComponent(typeof(EdgeCollider2D));
-        collider.points= generateColliderPoints(colliderMap(tilemap), tilemap.cellBounds.min);
+        List <Vector2[]> edges= generateColliderPoints(colliderMap(tilemap), tilemap.cellBounds.min);
+
+        if (edges.Count == 0) Debug.Log("Generated no Edge Collider");
+        if (edges.Count == 1) Debug.Log("Generated " + edges.Count + " Edge Collider");
+        if (edges.Count>1) Debug.Log("Generated "+edges.Count+" Edge Colliders");
+
+        foreach (Vector2[] points in edges) {
+
+            EdgeCollider2D collider = (EdgeCollider2D)gameObject.AddComponent(typeof(EdgeCollider2D));
+            collider.points = points;
+
+        }
     }
     void Update() {
 
@@ -46,7 +56,7 @@ public class TilemapCollider2DCustom : MonoBehaviour{
     }
 
 
-    Vector2[] generateColliderPoints(bool[][] map,Vector3Int offset) {
+    List<Vector2[]> generateColliderPoints(bool[][] map,Vector3Int offset) {
         /*String[] m=new String[map[0].Length];
         for (int x = 0; x < map.Length; x++) {
             for (int y = 0; y < map[x].Length; y++) {
@@ -62,27 +72,38 @@ public class TilemapCollider2DCustom : MonoBehaviour{
         Debug.Log(outM);
         */
 
-        Vector2[] points=new Vector2[0];
+        List<Vector2[]> pointsList = new List<Vector2[]>();
 
         for (int x=0;x<map.Length;x++) {
             for (int y = 0; y < map[x].Length; y++) {
                 if (xOr(x%2==0,y%2==0)) {
                     if (map[x][y]) {
+
+                        Vector2[] points = new Vector2[0];
                         Vector2 startPoint = new Vector2(x, y);
+
                         points = traceLine(map, startPoint, 1, startPoint).ToArray();
+
                         for (int i = 0; i < points.Length; i++) {
                             points[i] /= 2;
                             points[i] += new Vector2(offset.x, offset.y);
                         }
+
+                        pointsList.Add(points);
+
                         Debug.Log("New area found ... It had a boundarylength of "+points.Length);
+
                     }
                 }
             }
         }
-        foreach (Vector2 v in points) {
-            Debug.Log(v);
-        }
-        return points;
+        /*foreach (Vector2[] vArray in pointsList) {
+            Debug.Log("-----------------");
+            foreach (Vector2 v in vArray) {
+                Debug.Log(v);
+            }
+        }*/
+        return pointsList;
     }
 
     bool xOr(bool b1, bool b2) {
@@ -91,8 +112,7 @@ public class TilemapCollider2DCustom : MonoBehaviour{
 
     List<Vector2> traceLine(bool[][] map, Vector2 currentPos, int direction,Vector2 firstPoint) {
 
-        /*
-        String[] m = new String[map[0].Length];
+        /*String[] m = new String[map[0].Length];
         for (int x = 0; x < map.Length; x++) {
             for (int y = 0; y < map[x].Length; y++) {
                 if (map[x][y]&&x==(int)currentPos.x && y == (int)currentPos.y) m[y] += "o";
@@ -109,6 +129,16 @@ public class TilemapCollider2DCustom : MonoBehaviour{
         Debug.Log(outM);
         Debug.Log("direction: "+direction);
          */
+        if (currentPos == firstPoint) {
+            if (currentPos.x % 2 == 0) {
+                firstPoint += new Vector2(0, direction);
+            } else if (currentPos.y % 2 == 0) {
+                firstPoint += new Vector2(direction, 0);
+            } else {
+                Debug.LogWarning("There might be a Mistake here! The code is not expected to get here.");
+            }
+        }
+
 
 
         if (currentPos.x % 2 == 0) {
@@ -127,7 +157,7 @@ public class TilemapCollider2DCustom : MonoBehaviour{
                         //  i = 1     =>                                          x                           y + direction*2                           direction
                         //  i = 2     =>                                          x + 1                       y + direction                             1
                         List<Vector2> points = traceLine(map, new Vector2((int)currentPos.x - 1 + i, (int)currentPos.y + direction * (1 + i % 2)), i - 1 + direction * i % 2, firstPoint);
-                        points.Add(currentPos);
+                        points.Add(currentPos + new Vector2(0,direction));
                         return points;
 
                     }
@@ -149,7 +179,7 @@ public class TilemapCollider2DCustom : MonoBehaviour{
                         //  i = 1     =>                                          x + direction*2                 y                                     direction
                         //  i = 2     =>                                          x + direction                   y + 1                                 1
                         List<Vector2> points = traceLine(map, new Vector2((int)currentPos.x + direction * (1 + i % 2), (int)currentPos.y - 1 + i), i - 1 + direction * i % 2, firstPoint);
-                        points.Add(currentPos);
+                        points.Add(currentPos + new Vector2(direction,0));
                         return points;
 
                     }
@@ -163,7 +193,14 @@ public class TilemapCollider2DCustom : MonoBehaviour{
 
         List<Vector2> newPointsList = new List<Vector2>();
         newPointsList.Add(firstPoint);
-        newPointsList.Add(currentPos);
+        if (currentPos.x % 2 == 0) {
+            newPointsList.Add(currentPos + new Vector2(0, direction));
+        } else if (currentPos.y % 2 == 0){
+            newPointsList.Add(currentPos + new Vector2(direction, 0));
+        }else {
+            Debug.LogWarning("There might be a Mistake here! The code is not expected to get here.");
+        }
+
         return newPointsList;
     }
 
