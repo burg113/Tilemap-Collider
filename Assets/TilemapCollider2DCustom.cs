@@ -11,13 +11,21 @@ using UnityEditor.UIElements;
 public class TilemapCollider2DCustom : MonoBehaviour{
     Tilemap tilemap;
 
+    public int topOffset;
+    public int bottomOffset;
+    public int rightOffset;
+    public int leftOffset;
+
+
+
+
     void Start() {
         //gets the tilemap attatched to this gameobject
         tilemap = GetComponent<Tilemap>();
 
         //  gets an list of Vector2[] from the function "generateColliderPoints" which needs a pre-processed tilemap (converted to bool matrix) given by "colliderMap(tilemap)" as well as the tilemaps cellbounds to translate the tilemap positions to worldpositions. 
         //  Each Vector2[] will be converted to its own edge collider  (in lines 28-32)
-        List<Vector2[]> edges= generateColliderPoints(colliderMap(tilemap), tilemap.cellBounds.min);
+        List<Vector2[]> edges= generateColliderPoints(colliderMap(tilemap, topOffset, bottomOffset,rightOffset,leftOffset), tilemap.cellBounds.min);
 
         // gives the user feedback how many colliders will be created
         if (edges.Count == 0) Debug.Log("Generated no edge collider");
@@ -36,14 +44,16 @@ public class TilemapCollider2DCustom : MonoBehaviour{
 
 
     // the function which pre-processes the tilemap converting it into an bool[][] (Matrix) which i will rever to as a map.    bool[x][y] is true if there is a tile at the position (x|y)
-    bool[][] colliderMap(Tilemap tilemap) {
+    ColliderMap colliderMap(Tilemap tilemap,int topOffset, int bottomOffset, int rightOffset, int leftOffset) {
         // converts the Tilemap into an array containing its TileBases
         TileBase[] allTiles = tilemap.GetTilesBlock(tilemap.cellBounds);
 
-        // initiallises the map (bool[][]) with the correct size
+        // initiallises the map (bool[][]) and the offset map (int[][]) with the correct size
         bool[][] map = new bool[tilemap.cellBounds.size.x * 2 + 2][];
+        int[][] offsets = new int[tilemap.cellBounds.size.x * 2 + 2][];
         for (int i = 0; i < map.Length; i++) {
             map[i] = new bool[tilemap.cellBounds.size.y * 2 + 2];
+            offsets[i] = new int[tilemap.cellBounds.size.y * 2 + 2];
         }
 
         /*loops through all of the TileBases (and finds all of the edges of the structure)
@@ -68,36 +78,37 @@ public class TilemapCollider2DCustom : MonoBehaviour{
                 // This is the algorithme doing what was discribed above (converting matrix of tiles to matrix of bounds)
                 if (tile != null) {
                     map[x * 2 + 1][y * 2] = !map[x * 2 + 1][y * 2];
-                    map[x * 2][y * 2 + 1] = !map[x * 2][y * 2 + 1];
+                    offsets[x * 2 + 1][y * 2] = topOffset;
                     map[x * 2 + 2][y * 2 + 1] = !map[x * 2 + 2][y * 2 + 1];
+                    offsets[x * 2 + 2][y * 2 + 1] = rightOffset;
                     map[x * 2 + 1][y * 2 + 2] = !map[x * 2 + 1][y * 2 + 2];
+                    offsets[x * 2 + 1][y * 2 + 2] = bottomOffset;
+                    map[x * 2][y * 2 + 1] = !map[x * 2][y * 2 + 1];
+                    offsets[x * 2][y * 2 + 1] = leftOffset;
                 }
 
             }
         }
-
         //returns the map of boarders
-        return map;
+        return new ColliderMap(map, offsets);
     }
 
+    struct ColliderMap {
+        public bool[][] map;
+        public int[][] offsets;
+        public ColliderMap(bool[][] map, int[][] offsets) {
+            this.map = map;
+            this.offsets = offsets;
+        }
+
+    }
 
     // The function generating the actual collider points from a map of boarders (bool[][]) 
-    List<Vector2[]> generateColliderPoints(bool[][] map,Vector3Int offset) {
-        /*String[] m=new String[map[0].Length];
-        for (int x = 0; x < map.Length; x++) {
-            for (int y = 0; y < map[x].Length; y++) {
-                if (map[x][y]) m[y] += "x";
-                if (!map[x][y]) m[y] += ".";
+    List<Vector2[]> generateColliderPoints(ColliderMap colliderMap,Vector3Int offset) {
+        bool[][] map = colliderMap.map;
+        int[][] offsets = colliderMap.offsets;
+        //debug(map);
 
-            }
-        }
-        String outM="";
-        foreach (String s in m) {
-            outM += s + Environment.NewLine;
-        }
-        Debug.Log(outM);
-        */
-        
         // creates the list in which all of the Vector[] will be stored
         List<Vector2[]> pointsList = new List<Vector2[]>();
 
@@ -114,12 +125,13 @@ public class TilemapCollider2DCustom : MonoBehaviour{
                         Vector2 startPoint = new Vector2(x, y);
 
                         // gets a point list and converts it to a point[] (could be imagend as a line) for one Collider from "traceLine" (which takes in the map it operates on as well as the point from which it starts tracking down the others and a starting direction)
-                        points = traceLine(map, startPoint, 1, startPoint).ToArray();
+                        points = traceLine(map, offsets, startPoint, 1, startPoint).ToArray();
 
                         // this applies a transformation to the points translating them from their map to world cordinates
                         for (int i = 0; i < points.Length; i++) {
                             points[i] /= 2;
                             points[i] += new Vector2(offset.x, offset.y);
+
                         }
 
                         // adds the point [] (line) to the list of Vector2[] which will later on give this point[] to a edge collider
@@ -150,29 +162,13 @@ public class TilemapCollider2DCustom : MonoBehaviour{
 
     // !!! This function calls itself; each iteration adding one point to the List !!!
     // it takes in a map as well as a point on the map and searches for others; which then again search for more... Once it finds no more it returns the Vector2s in a list of all of the points found
-    List<Vector2> traceLine(bool[][] map, Vector2 currentPos, int direction,Vector2 firstPoint) {
+    List<Vector2> traceLine(bool[][] map,int [][] offsets, Vector2 currentPos, int direction,Vector2 firstPoint) {
 
-        /*String[] m = new String[map[0].Length];
-        for (int x = 0; x < map.Length; x++) {
-            for (int y = 0; y < map[x].Length; y++) {
-                if (map[x][y]&&x==(int)currentPos.x && y == (int)currentPos.y) m[y] += "o";
-                if (map[x][y]&&!(x == (int)currentPos.x && y == (int)currentPos.y)) m[y] += "x";
-                if (!map[x][y]) m[y] += ".";
-
-            }
-        }
-        String outM = "";
-        foreach (String s in m) {
-            outM += s + Environment.NewLine;
-        }
-
-        Debug.Log(outM);
-        Debug.Log("direction: "+direction);
-         */
 
 
         // if this is the first point it corrects the first points possision 
-        if (currentPos == firstPoint) {
+        bool isFirstPoint = (currentPos == firstPoint);
+        if (isFirstPoint) {
             if (currentPos.x % 2 == 0) {
                 firstPoint += new Vector2(0, direction);
             } else if (currentPos.y % 2 == 0) {
@@ -183,7 +179,7 @@ public class TilemapCollider2DCustom : MonoBehaviour{
         }
 
 
-        // this first part (lines 186-210) is accessed if this is looking at a vertical line
+        // this first part (lines 158-186) is accessed if this is looking at a vertical line
         if (currentPos.x % 2 == 0) {
             //Debug.Log("vertical");
             // this searches if there is another line in the given direction (1=down ; 2=up)
@@ -202,9 +198,9 @@ public class TilemapCollider2DCustom : MonoBehaviour{
                         //  i = 0     =>                                          x - 1                       y + direction                             -1
                         //  i = 1     =>                                          x                           y + direction*2                           direction
                         //  i = 2     =>                                          x + 1                       y + direction                             1
-                        List<Vector2> points = traceLine(map, new Vector2((int)currentPos.x - 1 + i, (int)currentPos.y + direction * (1 + i % 2)), i - 1 + direction * i % 2, firstPoint);
+                        List<Vector2> points = traceLine(map, offsets, new Vector2((int)currentPos.x - 1 + i, (int)currentPos.y + direction * (1 + i % 2)), i - 1 + direction * i % 2, firstPoint);
                         // this point is added to the Vector2 list of the called instance
-                        points.Add(currentPos + new Vector2(0,direction));
+                        points.Add(currentPos + new Vector2(offsets[(int)currentPos.x][(int)currentPos.y], direction));
 
                         //this passes the list up to the function which called this (probably another instance of this)
                         return points;
@@ -212,7 +208,6 @@ public class TilemapCollider2DCustom : MonoBehaviour{
                     }
                 } catch (IndexOutOfRangeException e) { }
             }
-
 
         // this second part is accessed if this is looking at a horizontal line. It is the exact same code but instead of searching up or down it searches right or left of it selfe
         } else if (currentPos.y % 2 == 0) {
@@ -232,9 +227,9 @@ public class TilemapCollider2DCustom : MonoBehaviour{
                         //  i = 0     =>                                          x + direction                   y - 1                                 -1
                         //  i = 1     =>                                          x + direction*2                 y                                     direction
                         //  i = 2     =>                                          x + direction                   y + 1                                 1
-                        List<Vector2> points = traceLine(map, new Vector2((int)currentPos.x + direction * (1 + i % 2), (int)currentPos.y - 1 + i), i - 1 + direction * i % 2, firstPoint);
+                        List<Vector2> points = traceLine(map, offsets, new Vector2((int)currentPos.x + direction * (1 + i % 2), (int)currentPos.y - 1 + i), i - 1 + direction * i % 2, firstPoint);
                         // this point is added to the Vector2 list of the called instance
-                        points.Add(currentPos + new Vector2(direction,0));
+                        points.Add(currentPos + new Vector2(direction, offsets[(int)currentPos.x][(int)currentPos.y]));
 
                         //this passes the list up to the function which called this (probably another instance of this)
                         return points;
@@ -256,14 +251,24 @@ public class TilemapCollider2DCustom : MonoBehaviour{
 
 
         // this adds the line wich is currently looked at to the list
-        
+
+        Vector2 firstOffset=new Vector2();
+        if (currentPos.x % 2 == 0) {
+            firstOffset = new Vector2(offsets[(int)currentPos.x][(int)currentPos.y], 0);
+        } else if (firstPoint.y % 2 == 0) {
+            firstOffset = new Vector2(0, offsets[(int)currentPos.x][(int)currentPos.y]);
+        } else {
+            // this is a check if this point left the "chessboard-pattern"
+            Debug.LogWarning("There might be a Mistake here! The code is not expected to get here.");
+        }
+
         // this adds the first point
-        newPointsList.Add(firstPoint);
+        newPointsList.Add(firstPoint+ firstOffset);
         // this adds this point
         if (currentPos.x % 2 == 0) {
-            newPointsList.Add(currentPos + new Vector2(0, direction));
+            newPointsList.Add(currentPos + new Vector2(offsets[(int)currentPos.x][(int)currentPos.y], direction));
         } else if (currentPos.y % 2 == 0){
-            newPointsList.Add(currentPos + new Vector2(direction, 0));
+            newPointsList.Add(currentPos + new Vector2(direction, offsets[(int)currentPos.x][(int)currentPos.y]));
         }else {
             // this is a check if this point left the "chessboard-pattern"
             Debug.LogWarning("There might be a Mistake here! The code is not expected to get here.");
@@ -273,5 +278,23 @@ public class TilemapCollider2DCustom : MonoBehaviour{
         return newPointsList;
     }
 
+
+
+    void debug(bool[][] map) {
+        String[] m = new String[map[0].Length];
+        for (int x = 0; x < map.Length; x++) {
+            for (int y = 0; y < map[x].Length; y++) {
+                if (map[x][y]) m[y] += "x";
+                if (!map[x][y]) m[y] += ".";
+
+            }
+        }
+        String outM = "";
+        foreach (String s in m) {
+            outM += s + Environment.NewLine;
+        }
+
+        Debug.Log(outM);
+    }
 
 }
